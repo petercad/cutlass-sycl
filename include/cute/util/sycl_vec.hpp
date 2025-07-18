@@ -55,6 +55,17 @@ using uchar16 = vector_t<uchar, 16>;
 using uchar32 = vector_t<uchar, 32>;
 using uchar64 = vector_t<uchar, 64>;
 
+using char2 = vector_t<char, 2>;
+using char4 = vector_t<char, 4>;
+using char8 = vector_t<char, 8>;
+using char16 = vector_t<char, 16>;
+using char32 = vector_t<char, 32>;
+using char64 = vector_t<char, 64>;
+
+using half2 = vector_t<_Float16, 2>;    /* half fiasco */
+using half4 = vector_t<_Float16, 4>;
+using half8 = vector_t<_Float16, 8>;
+
 using float2 = vector_t<float, 2>;
 using float4 = vector_t<float, 4>;
 using float8 = vector_t<float, 8>;

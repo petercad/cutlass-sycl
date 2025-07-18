@@ -25,6 +25,7 @@ public:
   constexpr operator T() const { return value_; }
 };
 
+
 #define CUTE_SIMD_NM_BINARY_OP(op, simd, z, a, b) \
   asm( \
     #op " (M1_NM, " #simd ") %0(0,0)<1> %1(0,0)<1;1,0> %2(0,0)<1;1,0>" \
@@ -82,7 +83,7 @@ struct SGCoop<plus> {
     }
 
     if constexpr (N % 2) {
-      CUTE_SIMD_NM_BINARY_OP(add, 16, result[N - 1], lhs, rhs[N - 1]);
+      CUTE_SIMD_NM_BINARY_OP(add, 16, result[N - 1], _Float16(lhs), rhs[N - 1]);
     }
 #else
     for (size_t i = 0; i < N; i++)
@@ -100,15 +101,61 @@ struct SGCoop<plus> {
 
     CUTE_UNROLL
     for (size_t i = 0; i < N / 2; ++i) {
-      CUTE_SIMD_NM_BINARY_OP_LUNIFORM(add, 32, result_ptr[i], half_t(lhs), rhs_ptr[i]);
+      CUTE_SIMD_NM_BINARY_OP_LUNIFORM(add, 32, result_ptr[i], _Float16(half_t(lhs)), rhs_ptr[i]);
     }
 
     if constexpr (N % 2) {
-      CUTE_SIMD_NM_BINARY_OP_LUNIFORM(add, 16, result[N - 1], half_t(lhs), rhs[N - 1]);
+      CUTE_SIMD_NM_BINARY_OP_LUNIFORM(add, 16, result[N - 1], _Float16(half_t(lhs)), rhs[N - 1]);
     }
 #else
     for (size_t i = 0; i < N; i++)
       result[i] = plus{}(half_t(lhs), rhs[i]);
+#endif
+    return result;
+  }
+
+
+  template <size_t N>
+  array<half_t, N> operator()(array<half_t, N> const& lhs, half_t const& rhs) const {
+    array<half_t, N> result;
+#if defined(SYCL_INTEL_TARGET) && defined(__SYCL_DEVICE_ONLY__)
+    auto *result_ptr = reinterpret_cast<cute::intel::half2 *>(&result);
+    auto *lhs_ptr    = reinterpret_cast<cute::intel::half2 const *>(&lhs);
+    cute::intel::half2 rhs2{_Float16(rhs), _Float16(rhs)};
+
+    CUTE_UNROLL
+    for (size_t i = 0; i < N / 2; ++i) {
+      CUTE_SIMD_NM_BINARY_OP(add, 32, result_ptr[i], lhs_ptr[i], rhs2);
+    }
+
+    if constexpr (N % 2) {
+      CUTE_SIMD_NM_BINARY_OP(add, 16, result[N - 1], lhs[N - 1], _Float16(rhs));
+    }
+#else
+    for (size_t i = 0; i < N; i++)
+      result[i] = plus{}(lhs[i], rhs);
+#endif
+    return result;
+  }
+
+  template <size_t N>
+  array<half_t, N> operator()(array<half_t, N> const& lhs, SGUniform<half_t> const& rhs) const {
+    array<half_t, N> result;
+#if defined(SYCL_INTEL_TARGET) && defined(__SYCL_DEVICE_ONLY__)
+    auto *result_ptr = reinterpret_cast<cute::intel::half2 *>(&result);
+    auto *lhs_ptr    = reinterpret_cast<cute::intel::half2 const *>(&lhs);
+
+    CUTE_UNROLL
+    for (size_t i = 0; i < N / 2; ++i) {
+      CUTE_SIMD_NM_BINARY_OP_RUNIFORM(add, 32, result_ptr[i], lhs_ptr[i], _Float16(half_t(rhs)));
+    }
+
+    if constexpr (N % 2) {
+      CUTE_SIMD_NM_BINARY_OP_RUNIFORM(add, 16, result[N - 1], lhs[N - 1], _Float16(half_t(rhs)));
+    }
+#else
+    for (size_t i = 0; i < N; i++)
+      result[i] = plus{}(lhs[i], half_t(rhs));
 #endif
     return result;
   }

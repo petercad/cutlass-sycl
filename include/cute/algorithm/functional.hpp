@@ -288,3 +288,7 @@ bind(Fn const& fn, Arg const& arg) {
 }
 
 } // end namespace cute
+
+#ifdef SYCL_INTEL_TARGET
+#include "cute/algorithm/functional_xe.hpp"
+#endif
