@@ -33,10 +33,28 @@
 #pragma once
 
 #include <cute/config.hpp>
+#include <cute/algorithm/prefer.hpp>
 #include <cute/tensor_impl.hpp>
 
 namespace cute
 {
+
+// Helpers to recover an array from contiguous Tensor data where possible.
+template <class Engine,
+          class Layout,
+          std::enable_if_t<std::is_pointer_v<typename Engine::iterator>, int> enable = 0>
+inline auto& rematerialize_array(Tensor<Engine, Layout>& tensor) {
+  using ArrayType = array<typename Engine::element_type, cosize_v<Layout>>;
+  return *reinterpret_cast<ArrayType*>(tensor.data());
+}
+
+template <class Engine,
+          class Layout,
+          std::enable_if_t<std::is_pointer_v<typename Engine::iterator>, int> enable = 0>
+inline auto& rematerialize_array(Tensor<Engine, Layout> const& tensor) {
+  using ArrayType = array<typename Engine::element_type, cosize_v<Layout>>;
+  return *reinterpret_cast<const ArrayType*>(tensor.data());
+}
 
 //
 // for_each
@@ -131,6 +149,42 @@ transform(Tensor<EngineIn, LayoutIn > const& tensor_in,
 // Takes two tensors as input and one tensor as output.
 // Applies the binary_op to tensor_in1 and tensor_in2 and
 // assigns it to tensor_out
+
+// Preferred implementation with array-parallel operation
+template <class EngineIn1, class LayoutIn1,
+          class EngineIn2, class LayoutIn2,
+          class EngineOut, class LayoutOut,
+          class BinaryOp>
+CUTE_HOST_DEVICE constexpr
+auto
+transform(Tensor<EngineIn1,LayoutIn1> const& tensor_in1,
+          Tensor<EngineIn2,LayoutIn2> const& tensor_in2,
+          Tensor<EngineOut,LayoutOut>      & tensor_out,
+          BinaryOp&& op, prefer<1>)
+    -> std::void_t<decltype(rematerialize_array(tensor_out) = op(rematerialize_array(tensor_in1), rematerialize_array(tensor_in2)))>
+{
+  rematerialize_array(tensor_out) = op(rematerialize_array(tensor_in1), rematerialize_array(tensor_in2));
+}
+
+// Element-by-element fallback
+template <class EngineIn1, class LayoutIn1,
+          class EngineIn2, class LayoutIn2,
+          class EngineOut, class LayoutOut,
+          class BinaryOp>
+CUTE_HOST_DEVICE constexpr
+void
+transform(Tensor<EngineIn1,LayoutIn1> const& tensor_in1,
+          Tensor<EngineIn2,LayoutIn2> const& tensor_in2,
+          Tensor<EngineOut,LayoutOut>      & tensor_out,
+          BinaryOp&& op, prefer<0>)
+{
+  CUTE_UNROLL
+  for (int i = 0; i < size(tensor_in1); ++i) {
+    tensor_out(i) = op(tensor_in1(i), tensor_in2(i));
+  }
+}
+
+// Dispatching
 template <class EngineIn1, class LayoutIn1,
           class EngineIn2, class LayoutIn2,
           class EngineOut, class LayoutOut,
@@ -142,10 +196,7 @@ transform(Tensor<EngineIn1,LayoutIn1> const& tensor_in1,
           Tensor<EngineOut,LayoutOut>      & tensor_out,
           BinaryOp&& op)
 {
-  CUTE_UNROLL
-  for (int i = 0; i < size(tensor_in1); ++i) {
-    tensor_out(i) = op(tensor_in1(i), tensor_in2(i));
-  }
+  transform(tensor_in1, tensor_in2, tensor_out, op, prefer<1>{});
 }
 
 // Accept mutable temporaries
